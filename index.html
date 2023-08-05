@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Colored Boxes with Text</title>
+<style>
+  body {
+    margin: 0;
+    padding: 0;
+    font-family: Arial, sans-serif;
+    background-color: #3498db; /* Blue background color */
+  }
+  
+  .box-container {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+  }
+  
+  .box-row {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    margin-bottom: 20px;
+  }
+  
+  .box-group {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin: 0 20px;
+  }
+  
+  .box-group-title {
+    font-size: 20px;
+    color: white;
+    text-align: center;
+    margin-bottom: 10px;
+  }
+  
+  .box {
+    width: 200px;
+    height: 100px;
+    margin: 10px 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    font-size: 16px;
+    color: white;
+    border-radius: 5px;
+    cursor: pointer;
+  }
+  
+  .box-header {
+    background-color: #333;
+    padding: 5px 0;
+    width: 100%;
+    text-align: center;
+    border-top-left-radius: 5px;
+    border-top-right-radius: 5px;
+  }
+  
+  .box-content {
+    flex: 1;
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+  
+  .box.dev {
+    background-color: #e74c3c;
+  }
+  
+  .box.fqt {
+    background-color: #2ecc71;
+  }
+  
+  .box.uat {
+    background-color: #f39c12;
+  }
+  
+  .box.stage {
+    background-color: #9b59b6;
+  }
+  
+  .box.prod {
+    background-color: #1abc9c;
+  }
+</style>
+</head>
+<body>
+  <div class="box-container">
+    <div class="box-row">
+      <div class="box-group">
+        <div class="box-group-title">DEV Group</div>
+		
+        <a href="dev-page1.html" class="box dev">
+          <div class="box-header">DEV Header 1</div>
+          <div class="box-content">Box 1</div>
+        </a>
+        <a href="dev-page2.html" class="box dev">
+          <div class="box-header">DEV Header 2</div>
+          <div class="box-content">Box 2</div>
+        </a>
+        <a href="dev-page3.html" class="box dev">
+          <div class="box-header">DEV Header 3</div>
+          <div class="box-content">Box 3</div>
+        </a>
+        <a href="dev-page3.html" class="box dev">
+          <div class="box-header">DEV Header 4</div>
+          <div class="box-content">Box 4</div>
+        </a>
+        <a href="dev-page3.html" class="box dev">
+          <div class="box-header">DEV Header 5</div>
+          <div class="box-content">Box 5</div>
+        </a>
+        <a href="dev-page3.html" class="box dev">
+          <div class="box-header">DEV Header 6</div>
+          <div class="box-content">Box 6</div>
+        </a>
+		
+		
+      </div>
+	  
+	  
+      <div class="box-group">
+        <div class="box-group-title">FQT Group</div>
+        <a href="dev-page1.html" class="box dev">
+          <div class="box-header">FQT Header 1</div>
+          <div class="box-content">Box 1</div>
+        </a>
+        <a href="dev-page2.html" class="box dev">
+          <div class="box-header">FQT Header 2</div>
+          <div class="box-content">Box 2</div>
+        </a>
+        <a href="dev-page3.html" class="box dev">
+          <div class="box-header">FQT Header 3</div>
+          <div class="box-content">Box 3</div>
+        </a>
+        <a href="fqt-page1.html" class="box fqt">
+          <div class="box-header">FQT Header 1</div>
+          <div class="box-content">Box 4</div>
+        </a>
+        <a href="fqt-page2.html" class="box fqt">
+          <div class="box-header">FQT Header 2</div>
+          <div class="box-content">Box 5</div>
+        </a>
+        <a href="fqt-page3.html" class="box fqt">
+          <div class="box-header">FQT Header 3</div>
+          <div class="box-content">Box 6</div>
+        </a>
+      </div>
+      <div class="box-group">
+        <div class="box-group-title">UAT Group</div>
+        <a href="uat-page1.html" class="box uat">
+          <div class="box-header">UAT Header 1</div>
+          <div class="box-content">Box 7</div>
+        </a>
+        <a href="uat-page2.html" class="box uat">
+          <div class="box-header">UAT Header 2</div>
+          <div class="box-content">Box 8</div>
+        </a>
+        <a href="uat-page3.html" class="box uat">
+          <div class="box-header">UAT Header 3</div>
+          <div class="box-content">Box 9</div>
+        </a>
+        <a href="dev-page1.html" class="box dev">
+          <div class="box-header">UATHeader 1</div>
+          <div class="box-content">Box 1</div>
+        </a>
+        <a href="dev-page2.html" class="box dev">
+          <div class="box-header">UAT Header 2</div>
+          <div class="box-content">Box 2</div>
+        </a>
+        <a href="dev-page3.html" class="box dev">
+          <div class="box-header">UAT Header 3</div>
+          <div class="box-content">Box 3</div>
+        </a>
+      </div>
+      <div class="box-group">
+        <div class="box-group-title">STAGE Group</div>
+        <a href="stage-page1.html" class="box stage">
+          <div class="box-header">STAGE Header 1</div>
+          <div class="box-content">Box 10</div>
+        </a>
+        <a href="stage-page2.html" class="box stage">
+          <div class="box-header">STAGE Header 2</div>
+          <div class="box-content">Box 11</div>
+        </a>
+        <a href="stage-page3.html" class="box stage">
+          <div class="box-header">STAGE Header 3</div>
+          <div class="box-content">Box 12</div>
+        </a>
+        <a href="dev-page1.html" class="box dev">
+          <div class="box-header">STAGE Header 1</div>
+          <div class="box-content">Box 1</div>
+        </a>
+        <a href="dev-page2.html" class="box dev">
+          <div class="box-header">STAGE Header 2</div>
+          <div class="box-content">Box 2</div>
+        </a>
+        <a href="dev-page3.html" class="box dev">
+          <div class="box-header">STAGE Header 3</div>
+          <div class="box-content">Box 3</div>
+        </a>
+      </div>
+      <div class="box-group">
+        <div class="box-group-title">PROD Group</div>
+        <a href="prod-page1.html" class="box prod">
+          <div class="box-header">PROD Header 1</div>
+          <div class="box-content">Box 13</div>
+        </a>
+        <a href="prod-page2.html" class="box prod">
+          <div class="box-header">PROD Header 2</div>
+          <div class="box-content">Box 14</div>
+        </a>
+        <a href="prod-page3.html" class="box prod">
+          <div class="box-header">PROD Header 3</div>
+          <div class="box-content">Box 15</div>
+        </a>
+        <a href="dev-page1.html" class="box dev">
+          <div class="box-header">PROD Header 1</div>
+          <div class="box-content">Box 1</div>
+        </a>
+        <a href="dev-page2.html" class="box dev">
+          <div class="box-header">PROD Header 2</div>
+          <div class="box-content">Box 2</div>
+        </a>
+        <a href="dev-page3.html" class="box dev">
+          <div class="box-header">PROD Header 3</div>
+          <div class="box-content">Box 3</div>
+        </a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
