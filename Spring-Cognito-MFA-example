@@ -1,3 +1,233 @@
+
+Here’s a detailed example for a Java Spring Boot web application integrating MFA with AWS Cognito, MongoDB, and a mechanism to ensure users log in only from a browser and verify MFA:
+
+1. Prerequisites
+	•	AWS Cognito: Set up a user pool and enable MFA (e.g., SMS or TOTP).
+	•	MongoDB: Create a database (e.g., user_sessions) and a collection (e.g., sessions) to store user session details.
+	•	Spring Boot Dependencies: Use spring-boot-starter-web for the backend, aws-sdk-cognito for Cognito integration, and spring-boot-starter-data-mongodb for MongoDB.
+
+2. Dependencies
+
+Add these to your pom.xml:
+
+<dependencies>
+    <!-- AWS Cognito -->
+    <dependency>
+        <groupId>software.amazon.awssdk</groupId>
+        <artifactId>cognitoidentityprovider</artifactId>
+        <version>2.20.18</version>
+    </dependency>
+    
+    <!-- Spring Boot Web -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+
+    <!-- MongoDB -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-data-mongodb</artifactId>
+    </dependency>
+</dependencies>
+
+3. Application Properties
+
+Add Cognito and MongoDB configurations to application.properties:
+
+# AWS Cognito
+aws.cognito.userPoolId=us-east-1_ABCDefGHI
+aws.cognito.clientId=your_client_id
+aws.cognito.clientSecret=your_client_secret
+aws.cognito.region=us-east-1
+
+# MongoDB
+spring.data.mongodb.uri=mongodb://localhost:27017/user_sessions
+
+4. MongoDB Model
+
+Create a MongoDB model to store user session details:
+
+package com.example.mfa;
+
+import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.mapping.Document;
+
+@Document(collection = "sessions")
+public class UserSession {
+    @Id
+    private String id;
+    private String username;
+    private String browserDetails;
+    private String ipAddress;
+    private boolean mfaVerified;
+
+    // Getters and setters
+}
+
+5. MongoDB Repository
+
+Create a repository interface for MongoDB operations:
+
+package com.example.mfa;
+
+import org.springframework.data.mongodb.repository.MongoRepository;
+
+import java.util.Optional;
+
+public interface UserSessionRepository extends MongoRepository<UserSession, String> {
+    Optional<UserSession> findByUsername(String username);
+}
+
+6. Cognito Configuration
+
+Set up AWS Cognito Client:
+
+package com.example.mfa;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.cognitoidentityprovider.CognitoIdentityProviderClient;
+
+@Configuration
+public class CognitoConfig {
+
+    @Value("${aws.cognito.region}")
+    private String region;
+
+    @Bean
+    public CognitoIdentityProviderClient cognitoClient() {
+        return CognitoIdentityProviderClient.builder()
+                .region(Region.of(region))
+                .build();
+    }
+}
+
+7. Authentication Controller
+
+Handle login, enforce browser-based access, and MFA verification:
+
+package com.example.mfa;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.web.bind.annotation.*;
+import software.amazon.awssdk.services.cognitoidentityprovider.CognitoIdentityProviderClient;
+import software.amazon.awssdk.services.cognitoidentityprovider.model.*;
+
+import javax.servlet.http.HttpServletRequest;
+import java.util.Map;
+import java.util.Optional;
+
+@RestController
+@RequestMapping("/auth")
+public class AuthController {
+
+    private final CognitoIdentityProviderClient cognitoClient;
+    private final UserSessionRepository sessionRepository;
+    private final String clientId;
+
+    public AuthController(CognitoIdentityProviderClient cognitoClient, 
+                          UserSessionRepository sessionRepository,
+                          @Value("${aws.cognito.clientId}") String clientId) {
+        this.cognitoClient = cognitoClient;
+        this.sessionRepository = sessionRepository;
+        this.clientId = clientId;
+    }
+
+    @PostMapping("/login")
+    public String login(@RequestParam String username, 
+                        @RequestParam String password, 
+                        HttpServletRequest request) {
+        try {
+            // Check if the request is from a browser
+            String userAgent = request.getHeader("User-Agent");
+            if (userAgent == null || (!userAgent.contains("Mozilla") && !userAgent.contains("Chrome"))) {
+                return "Login allowed only from a browser.";
+            }
+
+            // Authenticate the user
+            AdminInitiateAuthRequest authRequest = AdminInitiateAuthRequest.builder()
+                    .userPoolId("us-east-1_ABCDefGHI")
+                    .clientId(clientId)
+                    .authFlow(AuthFlowType.ADMIN_USER_PASSWORD_AUTH)
+                    .authParameters(Map.of("USERNAME", username, "PASSWORD", password))
+                    .build();
+
+            AdminInitiateAuthResponse authResponse = cognitoClient.adminInitiateAuth(authRequest);
+
+            // Store session details in MongoDB
+            UserSession session = new UserSession();
+            session.setUsername(username);
+            session.setBrowserDetails(userAgent);
+            session.setIpAddress(request.getRemoteAddr());
+            session.setMfaVerified(false);
+            sessionRepository.save(session);
+
+            if ("SMS_MFA".equals(authResponse.challengeNameAsString())) {
+                return "MFA required. Use the '/auth/mfa' endpoint to verify.";
+            }
+
+            return authResponse.authenticationResult().idToken();
+        } catch (CognitoIdentityProviderException e) {
+            return "Login failed: " + e.getMessage();
+        }
+    }
+
+    @PostMapping("/mfa")
+    public String verifyMfa(@RequestParam String username, 
+                            @RequestParam String code, 
+                            @RequestParam String session) {
+        try {
+            // Retrieve session details
+            Optional<UserSession> userSession = sessionRepository.findByUsername(username);
+            if (userSession.isEmpty()) {
+                return "Session not found.";
+            }
+
+            // Verify MFA
+            RespondToAuthChallengeRequest challengeRequest = RespondToAuthChallengeRequest.builder()
+                    .clientId(clientId)
+                    .challengeName(ChallengeNameType.SMS_MFA)
+                    .challengeResponses(Map.of("SMS_MFA_CODE", code, "USERNAME", username))
+                    .build();
+
+            RespondToAuthChallengeResponse challengeResponse = cognitoClient.respondToAuthChallenge(challengeRequest);
+
+            // Update MongoDB to mark MFA as verified
+            UserSession sessionData = userSession.get();
+            sessionData.setMfaVerified(true);
+            sessionRepository.save(sessionData);
+
+            return challengeResponse.authenticationResult().idToken();
+        } catch (CognitoIdentityProviderException e) {
+            return "MFA verification failed: " + e.getMessage();
+        }
+    }
+}
+
+8. Test the Application
+	•	Login Endpoint:
+
+curl -X POST "http://localhost:8080/auth/login" \
+     -d "username=testuser" \
+     -d "password=testpassword"
+
+
+	•	MFA Verification Endpoint:
+
+curl -X POST "http://localhost:8080/auth/mfa" \
+     -d "username=testuser" \
+     -d "code=123456"
+
+9. Additional Enhancements
+	1.	Session Expiry: Implement TTL for MongoDB sessions.
+	2.	TOTP MFA: Expand to include Time-Based One-Time Password (TOTP) for MFA.
+	3.	Security: Secure API endpoints with HTTPS and JWT.
+
+This application enforces browser-only access and MFA verification with Cognito and MongoDB for session management.
+
 Here’s a example of implementing Multi-Factor Authentication (MFA) in a Java Spring Boot web application using AWS Cognito. This example uses the AWS Cognito SDK to integrate user authentication and handle MFA.
 
 1. Dependencies
