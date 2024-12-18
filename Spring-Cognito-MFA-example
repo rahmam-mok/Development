@@ -1,0 +1,145 @@
+Here’s a example of implementing Multi-Factor Authentication (MFA) in a Java Spring Boot web application using AWS Cognito. This example uses the AWS Cognito SDK to integrate user authentication and handle MFA.
+
+1. Dependencies
+
+Add the following dependencies to your pom.xml file:
+
+<dependencies>
+    <dependency>
+        <groupId>software.amazon.awssdk</groupId>
+        <artifactId>cognitoidentityprovider</artifactId>
+        <version>2.20.18</version>
+    </dependency>
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+</dependencies>
+
+2. Application Properties
+
+Add your AWS Cognito configurations in application.properties:
+
+aws.cognito.userPoolId=us-east-1_ABCDefGHI
+aws.cognito.clientId=your_client_id
+aws.cognito.clientSecret=your_client_secret
+aws.cognito.region=us-east-1
+
+3. Cognito Configuration
+
+Create a configuration class to initialize the AWS Cognito SDK:
+
+package com.example.mfa;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.cognitoidentityprovider.CognitoIdentityProviderClient;
+
+@Configuration
+public class CognitoConfig {
+
+    @Value("${aws.cognito.region}")
+    private String region;
+
+    @Bean
+    public CognitoIdentityProviderClient cognitoClient() {
+        return CognitoIdentityProviderClient.builder()
+                .region(Region.of(region))
+                .build();
+    }
+}
+
+4. Authentication Controller
+
+Handle user login and MFA flow:
+
+package com.example.mfa;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.web.bind.annotation.*;
+import software.amazon.awssdk.services.cognitoidentityprovider.CognitoIdentityProviderClient;
+import software.amazon.awssdk.services.cognitoidentityprovider.model.*;
+
+@RestController
+@RequestMapping("/auth")
+public class AuthController {
+
+    private final CognitoIdentityProviderClient cognitoClient;
+    private final String clientId;
+
+    public AuthController(CognitoIdentityProviderClient cognitoClient, 
+                          @Value("${aws.cognito.clientId}") String clientId) {
+        this.cognitoClient = cognitoClient;
+        this.clientId = clientId;
+    }
+
+    @PostMapping("/login")
+    public String login(@RequestParam String username, @RequestParam String password) {
+        try {
+            AdminInitiateAuthRequest authRequest = AdminInitiateAuthRequest.builder()
+                    .userPoolId("us-east-1_ABCDefGHI")
+                    .clientId(clientId)
+                    .authFlow(AuthFlowType.ADMIN_USER_PASSWORD_AUTH)
+                    .authParameters(Map.of("USERNAME", username, "PASSWORD", password))
+                    .build();
+
+            AdminInitiateAuthResponse authResponse = cognitoClient.adminInitiateAuth(authRequest);
+
+            if ("SMS_MFA".equals(authResponse.challengeNameAsString())) {
+                return "MFA required. Use the '/auth/mfa' endpoint to verify.";
+            }
+
+            return authResponse.authenticationResult().idToken();
+        } catch (CognitoIdentityProviderException e) {
+            return "Login failed: " + e.getMessage();
+        }
+    }
+
+    @PostMapping("/mfa")
+    public String verifyMfa(@RequestParam String session, @RequestParam String code) {
+        try {
+            RespondToAuthChallengeRequest challengeRequest = RespondToAuthChallengeRequest.builder()
+                    .clientId(clientId)
+                    .challengeName(ChallengeNameType.SMS_MFA)
+                    .challengeResponses(Map.of("SMS_MFA_CODE", code, "USERNAME", session))
+                    .build();
+
+            RespondToAuthChallengeResponse challengeResponse = cognitoClient.respondToAuthChallenge(challengeRequest);
+
+            return challengeResponse.authenticationResult().idToken();
+        } catch (CognitoIdentityProviderException e) {
+            return "MFA verification failed: " + e.getMessage();
+        }
+    }
+}
+
+5. Enable MFA in AWS Cognito
+	1.	Log in to the AWS Management Console.
+	2.	Go to Cognito > User Pools > Your User Pool.
+	3.	Navigate to MFA and Password Policy.
+	4.	Enable SMS-based MFA or TOTP-based MFA.
+
+6. Test the Application
+
+Use tools like Postman or curl to test the endpoints:
+
+Login:
+
+curl -X POST "http://localhost:8080/auth/login" \
+     -d "username=testuser" \
+     -d "password=testpassword"
+
+MFA Verification:
+
+curl -X POST "http://localhost:8080/auth/mfa" \
+     -d "session=exampleSessionId" \
+     -d "code=123456"
+
+7. Optional Enhancements
+	•	Frontend Integration: Use React or Angular to create a user-friendly interface for login and MFA.
+	•	Custom Authentication: Extend the logic to include other authentication methods like TOTP.
+	•	Error Handling: Implement better error handling and logging mechanisms.
+
+This is a basic setup to implement MFA with AWS Cognito. You can expand it further as per your application’s requirements.
