@@ -1,0 +1,174 @@
+Here is a **step-by-step guide to create a Power Automate flow that retrieves version history (including historical comments) from a SharePoint list** and **returns it to Power Apps using the REST API**.
+
+---
+
+## ✅ **Goal**
+
+> Access a SharePoint column (e.g., **"Comments"** with **Append Changes to Existing Text** enabled) and retrieve **all version history** entries — then show it in **Power Apps**.
+
+---
+
+## 🔧 **Prerequisites**
+
+* SharePoint list with **Versioning enabled**
+* "Comments" field with **Append Changes to Existing Text** enabled
+* Power Apps app
+* Power Automate license (free tier is fine)
+
+---
+
+## 🔁 **Step-by-Step Power Automate Flow**
+
+---
+
+### 🔹 **Step 1: Create an Automated Cloud Flow**
+
+1. Go to [Power Automate](https://make.powerautomate.com/)
+2. Click **Create** > **Instant cloud flow**
+3. Name it: `GetCommentsHistory`
+4. Choose **Power Apps** as the trigger
+5. Click **Create**
+
+---
+
+### 🔹 **Step 2: Add Power Apps Trigger Input**
+
+1. Add an input to get the Item ID:
+
+   * Click on **+ Add an input**
+   * Choose **Number** and name it `ItemID`
+
+---
+
+### 🔹 **Step 3: Get the List Item**
+
+1. Add a new action: **Get item**
+
+   * Site Address: your SharePoint site
+   * List Name: your list
+   * ID: Use `ItemID` from Power Apps
+
+---
+
+### 🔹 **Step 4: Send an HTTP Request to SharePoint (to get version history)**
+
+1. Add an action: **Send an HTTP request to SharePoint**
+
+   * **Site Address**: Same as above
+
+   * **Method**: `GET`
+
+   * **Uri**:
+
+     ```
+     _api/web/lists/GetByTitle('YourListName')/items(@{triggerBody()['ItemID']})/versions
+     ```
+
+     Replace `'YourListName'` with the exact name of your SharePoint list. If there are spaces, use `%20` (e.g., `Project%20Tasks`).
+
+   * **Headers**:
+
+     * Key: `Accept`
+     * Value: `application/json;odata=nometadata`
+
+---
+
+### 🔹 **Step 5: Parse the JSON Response**
+
+1. Add action: **Parse JSON**
+
+   * Content: `Body` from the HTTP action
+   * Schema: Click **Generate from sample**
+
+     * Paste a sample response from the SharePoint API. Here is an example snippet you can use:
+
+```json
+{
+  "value": [
+    {
+      "VersionId": 512,
+      "Created": "2024-03-05T15:31:01Z",
+      "Editor": {
+        "Title": "John Doe"
+      },
+      "FieldValuesAsText": {
+        "Comments": "Initial comment"
+      }
+    }
+  ]
+}
+```
+
+---
+
+### 🔹 **Step 6: Compose a Clean Response for Power Apps**
+
+1. Add action: **Select** (from Data Operations)
+
+   * From: `value` from **Parse JSON**
+   * Map fields like this:
+
+     * **Comment**: `item()['FieldValuesAsText']['Comments']`
+     * **EditedBy**: `item()['Editor']['Title']`
+     * **Modified**: `item()['Created']`
+
+---
+
+### 🔹 **Step 7: Respond to Power Apps**
+
+1. Add **Respond to PowerApps** action:
+
+   * Choose **Respond with a text value**
+   * Use `json()` to convert `Select` output to string:
+
+```powerapps
+json(outputs('Select'))
+```
+
+---
+
+## 📲 **Power Apps Integration**
+
+### 🔸 Step 1: Add a Button or OnVisible Event
+
+Call the flow from Power Apps like this:
+
+```powerapps
+Set(
+   commentHistoryJSON,
+   GetCommentsHistory.Run(ThisItem.ID)
+);
+Set(
+   commentHistory,
+   JSON(commentHistoryJSON, JSONFormat.IncludeBinaryData)
+)
+```
+
+> This sets `commentHistory` as a collection of parsed history entries.
+
+---
+
+### 🔸 Step 2: Show the Comments in a Gallery
+
+1. Add a **Gallery** control
+2. Set `Items` to:
+
+```powerapps
+Table(commentHistory)
+```
+
+3. Add Labels inside the gallery to show:
+
+   * `ThisItem.Comment`
+   * `ThisItem.EditedBy`
+   * `ThisItem.Modified`
+
+---
+
+## ✅ Final Notes
+
+* You can apply filters or formatting inside Power Apps as needed.
+* Consider adding error handling in Power Automate in case a version doesn't contain the field value.
+* REST API only returns **major versions** unless minor versioning is enabled.
+
+
