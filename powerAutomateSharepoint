@@ -1,0 +1,272 @@
+Got it—here’s a clean, repeatable pattern to use Power Automate + SharePoint REST to:
+	1.	find the right list items, 2) locate the PDF(s) dynamically, and 3) attach them to an email.
+
+I’ll show three common cases and give you copy-pasteable REST paths and expressions.
+
+⸻
+
+0) Prereqs (quick)
+	•	Connection: use SharePoint connector (same tenant) and Office 365 Outlook – Send an email (V2).
+	•	Limits: keep attachments under ~10–15 MB total per email (Outlook/tenant limits vary).
+	•	Helpful: enable Concurrency control on your main “Apply to each” (Degree of parallelism 1–3) if you’ll send a lot of emails.
+
+⸻
+
+1) Trigger and get target rows
+
+Trigger (pick one)
+	•	Manual / Recurrence, or
+	•	When an item is created/modified, or
+	•	When an item is modified with a Trigger Conditions filter (e.g., only when Signature becomes Yes).
+
+If you’re batch-processing:
+	1.	Initialize variable siteUrl (String) → https://<tenant>.sharepoint.com/sites/<SiteName>
+	2.	Send an HTTP request to SharePoint
+	•	Site Address: your site
+	•	Method: GET
+	•	Uri:
+
+_api/web/lists/getbytitle('Employee')/items?$select=Id,Title,Email,Signature,EmployeeFiles,Attachments&$filter=Signature eq 'Yes'
+
+
+	3.	Parse JSON on the HTTP body with this schema (minimal):
+
+{
+  "type":"object",
+  "properties":{
+    "d":{
+      "type":"object",
+      "properties":{
+        "results":{
+          "type":"array",
+          "items":{
+            "type":"object",
+            "properties":{
+              "Id":{"type":"integer"},
+              "Title":{"type":"string"},
+              "Email":{"type":"string"},
+              "Signature":{"type":"string"},
+              "EmployeeFiles":{"type":"string"},
+              "Attachments":{"type":"boolean"}
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+	4.	Apply to each → body('Parse_JSON')?['d']?['results']
+
+Inside this loop you’ll pick one of the file-location patterns below.
+
+⸻
+
+2A) If the PDF is stored as a List Item Attachment
+
+(SharePoint list item with “Attachments = Yes”)
+	1.	Send an HTTP request to SharePoint
+	•	Method: GET
+	•	Uri (get all attachments for this item):
+
+_api/web/lists/getbytitle('Employee')/items(@id)/AttachmentFiles?$select=FileName,ServerRelativeUrl&@id=@{items('Apply_to_each')?['Id']}
+
+
+	2.	Parse JSON (attachment listing) with schema:
+
+{
+  "type":"object",
+  "properties":{
+    "d":{
+      "type":"object",
+      "properties":{
+        "results":{
+          "type":"array",
+          "items":{
+            "type":"object",
+            "properties":{
+              "FileName":{"type":"string"},
+              "ServerRelativeUrl":{"type":"string"}
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+	3.	Apply to each → body('Parse_JSON_Attachments')?['d']?['results']
+	•	Condition: FileName ends with “.pdf”
+Expression:
+
+endsWith(item()?['FileName'], '.pdf')
+
+
+	•	If Yes → Get file content using path
+	•	Site Address: your site
+	•	File Path: dynamic → item()?['ServerRelativeUrl']
+	•	Collect contents (use Append to array variable called attArray) as objects:
+
+{
+  "Name": @{item()?['FileName']},
+  "ContentBytes": @{base64(outputs('Get_file_content_using_path')?['body'])}
+}
+
+
+
+⸻
+
+2B) If the list has a Hyperlink field that points directly to a PDF
+
+(Ex: column EmployeeFiles is Hyperlink or Single line text that stores the file URL)
+	1.	Make sure you’re getting the URL string. If it’s a Hyperlink field, it may come like {"Description":"…","Url":"…"}
+	•	If you pulled it via REST $select=EmployeeFiles on a Hyperlink column, extract the URL with:
+
+uriComponentToString(items('Apply_to_each')?['EmployeeFiles'])
+
+If it returns JSON text, first Parse JSON that field or use:
+
+json(items('Apply_to_each')?['EmployeeFiles'])?['Url']
+
+
+	2.	Convert to Server Relative URL if it’s absolute. Example expression:
+
+replace(
+  replace(
+    items('Apply_to_each')?['EmployeeFiles'],
+    'https://<tenant>.sharepoint.com', 
+    ''
+  ),
+  uriComponent('%2F'),
+  '/'
+)
+
+(Adjust if your string is already server-relative like /sites/Site/Library/folder/file.pdf.)
+
+	3.	Get file content using path
+	•	Site Address: your site
+	•	File Path: the server-relative path you built
+	4.	Build attachment object and push to attArray (same as 2A).
+
+⸻
+
+2C) If the list has a Hyperlink to a FOLDER and you want the newest PDF from that folder
+
+(Your earlier scenario: each item has a link to an employee folder containing one or more signed PDFs)
+	1.	Extract folder serverRelativeUrl similar to 2B (strip the tenant hostname if needed).
+	2.	Send an HTTP request to SharePoint to list files in the folder, filter to PDFs, newest first:
+	•	Method: GET
+	•	Uri:
+
+_api/web/GetFolderByServerRelativeUrl('@{variables('folderPath')}')/Files?$select=Name,ServerRelativeUrl,TimeLastModified&$filter=substringof('.pdf',Name)&$orderby=TimeLastModified desc&$top=1
+
+
+	•	Where variables('folderPath') is your server-relative folder path (e.g., /sites/Site/Shared Documents/Employees/JohnDoe).
+
+	3.	Parse JSON with schema:
+
+{
+  "type":"object",
+  "properties":{
+    "d":{
+      "type":"object",
+      "properties":{
+        "results":{
+          "type":"array",
+          "items":{
+            "type":"object",
+            "properties":{
+              "Name":{"type":"string"},
+              "ServerRelativeUrl":{"type":"string"},
+              "TimeLastModified":{"type":"string"}
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+	4.	Condition: length(body('Parse_JSON_Folder')?['d']?['results']) is greater than 0
+	•	If Yes → Get file content using path with first(body('Parse_JSON_Folder')?['d']?['results'])?['ServerRelativeUrl']
+	•	Push to attArray as before
+
+Tip: If you must pick a specific naming pattern (e.g., contains “signed”), change the REST filter to:
+?$filter=substringof('signed',Name) and substringof('.pdf',Name)
+
+⸻
+
+3) Send the email with attachment(s)
+
+At the end of the per-item loop (or after gathering all in batch):
+	•	Office 365 Outlook – Send an email (V2)
+	•	To: items('Apply_to_each')?['Email'] (or your column name)
+	•	Subject: e.g., Your signed document
+	•	Body: HTML body referencing item fields
+	•	Attachments:
+	•	If you only have one file: set Attachments Name to the file name and Attachments Content to the Get file content… output.
+	•	If multiple files: use Add dynamic content → switch to array mode by using the (hidden) advanced Attachments property:
+	•	Click Switch to input entire array (if available). Paste:
+
+@{variables('attArray')}
+
+
+Each object must be {Name: "<file.pdf>", ContentBytes: "<base64>"}
+(If your UI doesn’t expose the array editor, loop and call Send an email (V2) once per attachment or compose a string array of attachments with a custom connector—most tenants now support the array way.)
+
+⸻
+
+4) Putting it all together (outline)
+	•	Trigger (Recurrence or When item modified)
+	•	(Optional) Get items with Signature eq 'Yes' (REST)
+	•	Apply to each item
+	•	Initialize attArray = []
+	•	(Pick A/B/C to fetch PDF(s))
+	•	Send email (To = item.Email, Attachments = attArray)
+	•	(Optional) Update item: set “EmailSent = Yes”, “EmailSentOn = utcNow()”
+	•	Send an HTTP request to SharePoint (MERGE):
+
+_api/web/lists/getbytitle('Employee')/items(@id)
+
+Headers:
+
+IF-MATCH: *
+X-HTTP-Method: MERGE
+Content-Type: application/json;odata=verbose
+
+Body:
+
+{
+  "__metadata": { "type": "SP.Data.EmployeeListItem" },
+  "EmailSent": "Yes",
+  "EmailSentOn": "@{utcNow()}"
+}
+
+
+
+⸻
+
+5) Common expressions you can reuse
+	•	First result:
+first(body('Parse_JSON')?['d']?['results'])
+	•	Length check:
+greater(length(body('Parse_JSON_Folder')?['d']?['results']), 0)
+	•	Get URL from Hyperlink JSON:
+json(items('Apply_to_each')?['EmployeeFiles'])?['Url']
+	•	Turn absolute into server-relative:
+replace(items('Apply_to_each')?['EmployeeFiles'], 'https://<tenant>.sharepoint.com', '')
+	•	Name from path:
+last(split(variables('serverRelativeUrl'), '/'))
+	•	Base64 for attachment:
+base64(outputs('Get_file_content_using_path')?['body'])
+
+⸻
+
+6) Variations / Notes
+	•	If your PDFs live in a Document Library column (Lookup) instead of a link, you can also use the Get files (properties only) action with an OData filter (e.g., FileLeafRef eq 'something.pdf') then Get file content using the returned Identifier.
+	•	If your column stores a OneDrive/Graph-style URL, prefer the native SharePoint Get file content using path by converting to server-relative. If that’s not possible, use Microsoft Graph – HTTP (premium) to /drives/{id}/items/{id}/content.
+	•	Large batches: Add a Delay (e.g., 1–2 sec) inside the loop or limit concurrency to avoid throttling.
+
+⸻
+
+If you want, tell me which exact column type your “EmployeeFiles” is (Hyperlink vs. text vs. attachments vs. library lookup) and whether it points to a file or a folder—I’ll tailor the exact REST calls and expressions to your list.
